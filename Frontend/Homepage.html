@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serverless Text-to-Speech</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 150px;
+            transition: border-color 0.3s ease;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .controls-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            background-color: white;
+            transition: border-color 0.3s ease;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .generate-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 25px 0;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result {
+            display: none;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 25px;
+            margin-top: 25px;
+            text-align: center;
+        }
+
+        .result.success {
+            border-left: 4px solid #28a745;
+        }
+
+        .result.error {
+            border-left: 4px solid #dc3545;
+            background: #fff5f5;
+        }
+
+        .audio-player {
+            margin: 20px 0;
+        }
+
+        .audio-player audio {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .download-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+            transition: background-color 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: #218838;
+        }
+
+        .character-count {
+            text-align: right;
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .character-count.warning {
+            color: #ffc107;
+        }
+
+        .character-count.danger {
+            color: #dc3545;
+        }
+
+        @media (max-width: 768px) {
+            .controls-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 25px;
+                margin: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ Text-to-Speech</h1>
+            <p>Convert your text into natural-sounding speech using AWS Polly</p>
+        </div>
+
+        <form id="ttsForm">
+            <div class="form-group">
+                <label for="textInput">Enter your text:</label>
+                <textarea 
+                    id="textInput" 
+                    name="text" 
+                    placeholder="Type or paste your text here..." 
+                    maxlength="3000"
+                    required
+                ></textarea>
+                <div id="characterCount" class="character-count">0 / 3000 characters</div>
+            </div>
+
+            <div class="controls-row">
+                <div class="form-group">
+                    <label for="voiceSelect">Voice:</label>
+                    <select id="voiceSelect" name="voice">
+                        <option value="Joanna">Joanna (Female, US)</option>
+                        <option value="Matthew">Matthew (Male, US)</option>
+                        <option value="Ivy">Ivy (Female, US)</option>
+                        <option value="Justin">Justin (Male, US)</option>
+                        <option value="Kendra">Kendra (Female, US)</option>
+                        <option value="Kimberly">Kimberly (Female, US)</option>
+                        <option value="Salli">Salli (Female, US)</option>
+                        <option value="Joey">Joey (Male, US)</option>
+                        <option value="Nicole">Nicole (Female, AU)</option>
+                        <option value="Russell">Russell (Male, AU)</option>
+                        <option value="Amy">Amy (Female, UK)</option>
+                        <option value="Brian">Brian (Male, UK)</option>
+                        <option value="Emma">Emma (Female, UK)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="formatSelect">Format:</label>
+                    <select id="formatSelect" name="format">
+                        <option value="mp3">MP3</option>
+                        <option value="ogg_vorbis">OGG</option>
+                        <option value="pcm">PCM</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="speedSelect">Speed:</label>
+                    <select id="speedSelect" name="speed">
+                        <option value="x-slow">Extra Slow</option>
+                        <option value="slow">Slow</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="fast">Fast</option>
+                        <option value="x-fast">Extra Fast</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" class="generate-btn" id="generateBtn">
+                🎵 Generate Speech
+            </button>
+        </form>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Generating your audio... This may take a few seconds.</p>
+        </div>
+
+        <div id="result" class="result">
+            <!-- Results will be populated here -->
+        </div>
+    </div>
+
+    <script>
+        // Configuration - Replace with your actual API Gateway URL
+        const API_BASE_URL = 'YOUR_API_GATEWAY_URL_HERE';
+        
+        const form = document.getElementById('ttsForm');
+        const textInput = document.getElementById('textInput');
+        const characterCount = document.getElementById('characterCount');
+        const generateBtn = document.getElementById('generateBtn');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+
+        // Character counter
+        textInput.addEventListener('input', function() {
+            const count = this.value.length;
+            const maxLength = 3000;
+            characterCount.textContent = `${count} / ${maxLength} characters`;
+            
+            // Update styling based on character count
+            characterCount.className = 'character-count';
+            if (count > maxLength * 0.8) {
+                characterCount.classList.add('warning');
+            }
+            if (count > maxLength * 0.95) {
+                characterCount.classList.add('danger');
+            }
+        });
+
+        // Form submission
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(form);
+            const text = formData.get('text').trim();
+            
+            if (!text) {
+                showError('Please enter some text to convert to speech.');
+                return;
+            }
+
+            if (text.length > 3000) {
+                showError('Text is too long. Maximum 3000 characters allowed.');
+                return;
+            }
+
+            // Show loading state
+            setLoadingState(true);
+            hideResult();
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/synthesize`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        voice: formData.get('voice'),
+                        outputFormat: formData.get('format'),
+                        speed: formData.get('speed')
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                if (data.success) {
+                    showSuccess(data.data);
+                } else {
+                    throw new Error(data.error || 'Unknown error occurred');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message || 'Failed to generate speech. Please try again.');
+            } finally {
+                setLoadingState(false);
+            }
+        });
+
+        function setLoadingState(isLoading) {
+            generateBtn.disabled = isLoading;
+            loading.style.display = isLoading ? 'block' : 'none';
+            
+            if (isLoading) {
+                generateBtn.textContent = '⏳ Generating...';
+            } else {
+                generateBtn.textContent = '🎵 Generate Speech';
+            }
+        }
+
+        function showSuccess(data) {
+            result.className = 'result success';
+            result.style.display = 'block';
+            
+            result.innerHTML = `
+                <h3>✅ Speech Generated Successfully!</h3>
+                <p><strong>Voice:</strong> ${data.voice} | <strong>Format:</strong> ${data.format.toUpperCase()} | <strong>Length:</strong> ${data.textLength} characters</p>
+                
+                <div class="audio-player">
+                    <audio controls>
+                        <source src="${data.audioUrl}" type="${getAudioMimeType(data.format)}">
+                        Your browser does not support the audio element.
+                    </audio>
+                </div>
+                
+                <a href="${data.audioUrl}" download="speech.${getFileExtension(data.format)}" class="download-btn">
+                    📥 Download Audio
+                </a>
+                
+                <p style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                    <em>Audio link expires at: ${new Date(data.expiresAt).toLocaleString()}</em>
+                </p>
+            `;
+        }
+
+        function showError(message) {
+            result.className = 'result error';
+            result.style.display = 'block';
+            
+            result.innerHTML = `
+                <h3>❌ Error</h3>
+                <p>${message}</p>
+            `;
+        }
+
+        function hideResult() {
+            result.style.display = 'none';
+        }
+
+        function getAudioMimeType(format) {
+            const mimeTypes = {
+                'mp3': 'audio/mpeg',
+                'ogg_vorbis': 'audio/ogg',
+                'pcm': 'audio/pcm'
+            };
+            return mimeTypes[format] || 'audio/mpeg';
+        }
+
+        function getFileExtension(format) {
+            const extensions = {
+                'mp3': 'mp3',
+                'ogg_vorbis': 'ogg',
+                'pcm': 'pcm'
+            };
+            return extensions[format] || 'mp3';
+        }
+
+        // Initialize character count
+        textInput.dispatchEvent(new Event('input'));
+    </script>
+</body>
+</html>
